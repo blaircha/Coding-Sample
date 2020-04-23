@@ -1,0 +1,453 @@
+---
+title: "Sample Code"
+author: "Blair Cha"
+date: "23 April 2020"
+output:
+  pdf_document: 
+   toc: true
+   toc_depth: 1
+  html_document: 
+   toc: true
+   toc_depth: 1
+bibliography: Library.bib
+---
+
+This is the sample code for my Statistics capstone project, ``Investigating the Causes of Suicide Across Nations: A Mixed-Effect Model Approach.`` I use a mixed-effect model with the random slope effect to conduct longitudinal data analysis. It is composed of five steps shown above.
+
+The fundamental part of the data comes from My World in Data [@ritchie_roser_ortiz-ospina_2015]. Based on the literature, I obtain additional variables that could explain suicide rates from Gapminder.com [@gapminder], the United Nations Development Program [@human_development_reports], World Bank [@databank], and the World Health Organization [@world_health_organization]. 
+
+The final report for the project is the writing sample in my application.
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, error=TRUE)
+```
+
+# Step 1. Data Cleaning 
+## Install Relevant Libraries
+```{r, warning=FALSE, message=FALSE, error=FALSE}
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(lubridate)
+library(countrycode)
+library(stringr)
+library(Hmisc)
+library(xtable)
+library(memisc)
+```
+
+## Download the .xlsx and .csv files into your device, and import data.
+```{r, warning=FALSE, message=FALSE, error=FALSE}
+BMI0 <- read_csv("NCD_BMI_25A.csv")
+Suicide_Rates <- read_csv("suicide-death-rates.csv")
+Gini0 <- readxl::read_xlsx("Gini.xlsx")
+Mental_disorder0 <- readxl::read_xlsx("Mental disorder.xlsx")
+colnames(Mental_disorder0)[colnames(Mental_disorder0)=="Country"] <- "country"
+colnames(Mental_disorder0)[colnames(Mental_disorder0)=="Year"] <- "year"
+
+Gender_Ratio0 <- readxl::read_xlsx("Gender Ratio.xlsx") 
+Unemployment0 <- readxl::read_xlsx("Unemployment.xlsx")
+CO2 <- readxl::read_xlsx("CO2.xlsx")
+Adolescent <- readxl::read_xlsx("Adolescent fertility.xlsx")
+Inflation <- readxl::read_xlsx("Inflation.xlsx")
+Freedom <- readxl::read_xlsx("Freedom.xlsx")
+Rural <- readxl::read_xlsx("Rural population.xlsx")
+BirthRate <- readxl::read_xlsx("Birth rate.xlsx")
+Military <- readxl::read_xlsx("Military expenditure.xlsx")
+GDP_capita <- readxl::read_xlsx("GDP_capita.xlsx")
+```
+
+## Convert each dataset into a longer format with pivot_longer.
+```{r, warning=FALSE, message=FALSE, error=FALSE}
+BMI <- BMI0 %>%
+  pivot_longer(cols = -country,
+               names_to = "year",
+               values_to="BMI") %>%
+    mutate(year = as.numeric(year))
+
+Gini <- Gini0 %>%
+  pivot_longer(cols = -country,
+               names_to = "year",
+               values_to="Gini") %>%
+    mutate(year = as.numeric(year))
+
+Mental_disorder <- Mental_disorder0 %>%
+  mutate(year = as.numeric(year))
+
+Gender_Ratio <- Gender_Ratio0 %>%
+  pivot_longer(cols = -country,
+               names_to = "year",
+               values_to="Gender_ratio") %>%
+  mutate(year=as.numeric(year))
+
+Unemployment <- Unemployment0 %>%
+  pivot_longer(cols = -country,
+               names_to = "year",
+               values_to="Unemployment") %>%
+  mutate(year = as.numeric(year))%>%
+  drop_na()
+
+CO2 <- CO2 %>%
+  pivot_longer(cols = -country,
+               names_to = "year",
+               values_to="CO2") %>%
+  mutate(year = as.numeric(year))
+
+Inflation <- Inflation %>%
+  pivot_longer(cols = -country,
+               names_to = "year",
+               values_to="Inflation") %>%
+  mutate(year = as.numeric(year))%>%
+  drop_na()
+
+Adolescent <- Adolescent %>%
+  pivot_longer(cols = -country,
+               names_to = "year",
+               values_to="Adolescent") %>%
+  mutate(year = as.numeric(year))
+
+Freedom <- Freedom %>%
+  pivot_longer(cols = -country,
+               names_to = "year",
+               values_to="Freedom") %>%
+  mutate(year = as.numeric(year))
+
+BirthRate <- BirthRate %>%
+  pivot_longer(cols = -country,
+               names_to = "year",
+               values_to="BirthRate") %>%
+  mutate(year = as.numeric(year))
+
+Military <- Military %>%
+  pivot_longer(cols = -country,
+               names_to = "year",
+               values_to="Military") %>%
+  mutate(year = as.numeric(year))
+
+Rural <- Rural%>%
+  pivot_longer(cols = -country,
+               names_to = "year",
+               values_to="Rural") %>%
+  mutate(year = as.numeric(year))
+
+GDP_capita <- GDP_capita%>%
+  pivot_longer(cols = -country,
+               names_to = "year",
+               values_to="GDP_capita") %>%
+  mutate(year = as.numeric(year))
+```
+
+## Join all datasets 
+```{r, warning=FALSE, message=FALSE, error=FALSE}
+Suicide_Rates <- Suicide_Rates %>%
+  inner_join(Gini, by = c("year","country")) %>%
+  inner_join(Unemployment, by = c("year","country")) %>%
+  inner_join(Gender_Ratio, by = c("year","country")) %>%
+  inner_join(BMI, by = c("year","country")) %>%
+  inner_join(Mental_disorder, by = c("year","country")) %>%
+  inner_join(CO2, by = c("year","country")) %>%
+  inner_join(Inflation, by = c("year","country")) %>%
+  inner_join(Adolescent, by = c("year","country")) %>%
+  inner_join(Rural, by = c("year","country")) %>%
+  inner_join(Freedom, by = c("year","country")) %>%
+  inner_join(Military, by = c("year","country")) %>%
+  inner_join(BirthRate, by = c("year","country")) %>%
+  inner_join(GDP_capita, by = c("year","country")) %>%
+  mutate(scale_GDP_capita = GDP_capita/1000) %>%
+  mutate(scale_CO2 = CO2/1000)
+```
+
+## Other final changes to the dataset: deleting and renaming columns, cleaning rows in a column, and KNN imputation.
+```{r, warning=FALSE, message=FALSE, error=FALSE}
+# Delete column called, "Code."
+Suicide_Rates$Code <- NULL
+
+
+# Rename the Prevalence of Mental and Substance Use Disorder variable to "disorder."
+colnames(Suicide_Rates)[
+  colnames(Suicide_Rates)=="Prevalence - Mental and substance use disorders - Sex: Both - Age: Age-standardized (Percent) (%)"
+  ] <- "disorder"
+
+
+# Delete the range of BMI in brackets "[,]" in every row to leave just average BMI rates.
+Suicide_Rates <- Suicide_Rates %>%
+  mutate(BMI = str_replace(BMI, " \\[.*\\]", "")) %>%  
+  mutate(BMI = as.numeric(BMI)) 
+
+
+# Add the "continent" varible that indicates which continent each country belongs to.
+newdata <- data.frame(country=Suicide_Rates$country)
+newdata$continent <- countrycode(sourcevar = Suicide_Rates$country, 
+                                 origin= "country.name", 
+                                 destination= "continent")
+
+newdata <- newdata %>%
+  dplyr::select(continent, country) %>%
+  distinct() 
+
+Suicide_Rates <- Suicide_Rates %>%
+  inner_join(newdata, by="country") 
+
+
+# Using the VIM package, fill in missing data in all columns 
+# except for the variables after "-."
+library(VIM)
+Suicide <- Suicide_Rates %>% 
+  dplyr::select(-continent, -Suicide, -Gender_ratio, -GDP_capita, -CO2) %>% 
+  VIM::kNN(imp_var = FALSE) %>% 
+  mutate(Suicide = Suicide_Rates$Suicide) %>% 
+  mutate(continent = Suicide_Rates$continent)
+```
+
+## Save cleaned dataset as "Suicide.Rda." 
+```{r, warning=FALSE, message=FALSE, error=FALSE}
+save(Suicide, file="Suicide.Rda")
+```
+
+
+# Step 2. Fitting Mixed Effects Models 
+
+## Review of Mixed Effects Models
+
+A linear mixed effects model in terms of the outcome vector can be written as, 
+
+\[\mathbf{Y}_{i} =  \mathbf{X}_{i}\boldsymbol\beta + \mathbf{Z}_i\mathbf{b}_i + \boldsymbol\epsilon_i\]
+
+\[ = \text{Fixed effects} + \text{Random effects} + \text{Error}\]
+
+where $\mathbf{X}_i$ is the design matrix for the fixed effects, $\mathbf{Z}_i$ is the design matrix for the random effects (a subset of columns of $\mathbf{X}_i$), $\boldsymbol\epsilon_i\sim N(0,\boldsymbol\Sigma)$,  $\mathbf{b}_i\sim N(0,\mathbf{G})$, and $\mathbf{b}_i$ and $\boldsymbol\epsilon_i$ are independent.
+
+Thus, 
+
+\[\mathbf{Y}_{i}\sim \mathcal{N}(\mathbf{X}_{i}\boldsymbol\beta,\mathbf{Z}_i\mathbf{G}\mathbf{Z}_i^T + \boldsymbol\Sigma) \]
+
+
+## Load previously cleaned dataset and relevant libraries.
+
+```{r warning=FALSE, message=FALSE, error=FALSE}
+load("Suicide.Rda") 
+require(dplyr)
+library(lme4) # Package for Mixed Models
+```
+
+
+## Generate scatterplots to assess the existence of any interaction between variables. 
+
+There seems to be no clear indication of an interaction effect where one variable affects another's relationship with the response variable, Suicide. Therefore, I do not include any interaction variables in my final model.
+
+```{r, warning=FALSE, message=FALSE, error=FALSE}
+ggplot(Suicide, aes(x=scale_GDP_capita, y=Suicide, color=Unemployment)) + geom_point() 
+  
+ggplot(Suicide, aes(x=scale_GDP_capita, y=Suicide, color=Rural)) + geom_point() 
+
+ggplot(Suicide, aes(x=scale_GDP_capita, y=Suicide, color=Inflation)) + geom_point()
+
+ggplot(Suicide, aes(x=scale_GDP_capita, y=Suicide, color=Gini)) + geom_point() 
+
+ggplot(Suicide, aes(x=Military, y=Suicide, color=Freedom)) + geom_point() 
+
+ggplot(Suicide, aes(x=Gini, y=Suicide, color=Unemployment)) + geom_point() 
+
+ggplot(Suicide, aes(x=Gini, y=Suicide, color=Inflation)) + geom_point() 
+```
+
+## Fitting Candidate Models
+
+I exclude variables "proportion of education attainment at the primary school level" and "gender ratio" because they contain too many NAs and would lead to inaccurate results.
+
+I first include all my explanatory variables in the model and allow all of them to have a random slope.
+
+```{r warning=FALSE, message=FALSE, error=FALSE}
+mod1 = lmer(Suicide ~ 
+              Unemployment + BMI + disorder + scale_CO2 + Adolescent + Rural + BirthRate +
+              scale_GDP_capita + Gini + Inflation + Freedom + Military +
+              (Unemployment + BMI + disorder + scale_CO2 + Adolescent + 
+                Rural+ BirthRate + scale_GDP_capita + Gini + Inflation + 
+                Freedom + Military|country), 
+            data = Suicide, REML = FALSE)
+summary(mod1)
+```
+
+Looking at the Random effects result, I remove random slopes that have a small standard deviation: Inflation, Unemployment, scale_CO2, and scale_GDP_capita. This is because having a small standard deviation means the relationship between the number of suicide and the explainatory variable does not differ much compared to other countries. 
+
+Looking at the Fixed effects result, I remove variables with high standard error, Freedom and Military. At this point, I decide to keep disorder in my model, since despite the large standard error, the standard deviation of the random slope distribution is quite high. This means that the impact of disorder on suicide varies a lot among countries. Thus, I conclude that adding disorder in my model would help explain a legitimate proportion of the variance of the original data set.
+
+I fit the following models with random slopes BMI, disorder, and BirthRate, the variables with the highest standard deviation from mod1.
+
+```{r warning=FALSE, message=FALSE, error=FALSE}
+mod2 = lmer(Suicide ~  BMI + disorder + Adolescent + Rural + BirthRate  + Inflation + 
+               Gini +
+                (BMI + disorder + BirthRate|country), 
+                 data = Suicide, REML = FALSE)
+summary(mod2)
+```
+
+From the Information Criteria BIC, I discover that including the Gini variable generates higher BIC values, indicating the model is overfit and penalized. Therefore, I fit another model, mod3 without Gini.
+
+```{r warning=FALSE, message=FALSE, error=FALSE}
+mod3 = lmer(Suicide ~  BMI + disorder + Adolescent + Rural + BirthRate  + Inflation + 
+                (BMI + disorder + BirthRate|country), 
+                 data = Suicide, REML = FALSE)
+summary(mod3)
+```
+
+```{r warning=FALSE, message=FALSE, error=FALSE}
+BIC(mod2)
+BIC(mod3)
+```
+
+
+According to the Fixed effects result, all variables pass the hypothesis test by having t-values greater than 2, except for disorder. I keep disorder in my model for reasons stated above.
+
+mod3 seems like the most optimal model so far. Before making any decision, I generate another model with gdp per capita based on my literature review that suicide is a combined result of mental illness, major life events, and economic conditions [@berk2006effect]. 
+
+```{r warning=FALSE, message=FALSE, error=FALSE}
+mod4 = lmer(Suicide ~  BMI + disorder + Adolescent + Rural + BirthRate + Inflation +
+              scale_GDP_capita +
+                (BMI + disorder + BirthRate|country), 
+                 data = Suicide, REML = FALSE)
+summary(mod4)
+```
+
+
+# Step 3. Hypothesis Testing and Information Criteria
+
+## Likelihood Ratio Test
+
+I compare mod2 and mod3 with the likelihood ratio test. Suppose we have two models with the same random effects and covariance models. In this case, the full model is mod2, and the nested is mod3.
+
+- Full model: $M_f$ has $p$ columns in $\mathbf{X}_i$ and thus $p$ fixed effects $\beta_0,...,\beta_{p-1}$.
+- Nested model: $M_n$ has $k$ columns such that $k < p$ and $p-k$ fixed effects $\beta_l = 0$. 
+
+If we are using maximum likelihood estimation, it makes sense to compare the likelihood of two models.
+
+$H_0:$ nested model is true, $H_A:$ full model is true
+
+If we take the ratio of the likelihoods from the nested model and full model and plug in the maximum likelihood estimators, then we have another statistic.
+
+\[D = -2\log\left(\frac{L_n(\hat{\boldsymbol\beta},\hat{\mathbf{V}})}{L_f(\hat{\boldsymbol\beta},\hat{\mathbf{V}})}\right) = -2 \log(L_n(\hat{\boldsymbol\beta},\hat{\mathbf{V}})) + 2\log(L_f(\hat{\boldsymbol\beta},\hat{\mathbf{V}}))\]
+
+The sampling distribution of this statistic is approximatley **chi-squared** with degrees of freedom equal to the **difference in the number of parameters between the two models**.
+
+```{r warning=FALSE, message=FALSE, error=FALSE}
+anova(mod3, mod4) 
+```
+
+Since the p-value, 0.81, is not at a statistically significant level, I do not reject the null hypothesis that the smaller model is correct. Thus, I favor the nested model, mod3.
+
+
+## Hypothesis Testing for Coefficients
+
+To test whether multiple slopes are zero or a linear combination of slopes is zero, $H_0: \mathbf{L}\boldsymbol\beta=0$, I calculate a Wald statistic,
+
+$$W^2 = (\mathbf{L}\hat{\boldsymbol\beta})^T(\mathbf{L}\widehat{Cov}(\hat{\boldsymbol\beta})\mathbf{L}^T)^{-1}(\mathbf{L}\hat{\boldsymbol\beta}) $$
+
+Then I assume the sampling distribution is approximately $\chi^2$ with  df = # of rows of $\mathbf{L}$ to calculate p-values (as long as $n$ is large).
+
+For the mixed effects model, mod3, here is the sample code. 
+
+```{r warning=FALSE, message=FALSE, error=FALSE}
+b_mod3 = fixef(mod3)
+W_mod3 = vcov(mod3)
+
+L = matrix(c(0,0,0,0,0,0,1), nrow=1)
+
+L%*%b_mod3
+(se = sqrt(diag(L%*%W_mod3%*%t(L)))) ##Robust SE for Lb
+
+## 95% Confidence Interval (using Asymptotic Normality)
+L%*%b_mod3 - 1.96*se
+L%*%b_mod3 + 1.96*se
+
+
+## Hypothesis Testing
+w2 <- as.numeric( t(L%*%b_mod3) %*% solve(L %*% W_mod3 %*% t(L))%*% (L%*%b_mod3)) 
+## should be approximately chi squared
+
+1 - pchisq(w2, df = nrow(L)) #p-value
+```
+
+The confidence interval, [0.00658, 0.0136] does not contain a 0, meaning that the statistic is significantly different from 0 at the 0.05 level.
+
+Also, the p-value is lower than 0.05. This means I reject the null hypothesis that multiple slopes are zero or a linear combination of slopes is zero. Therefore, the relationship between the response and independent variables are significant in model 3.
+
+## Information Criteria for Choosing Fixed Effects
+
+```{r warning=FALSE, message=FALSE, error=FALSE}
+BIC(mod1)
+BIC(mod2)
+BIC(mod3)
+BIC(mod4)
+```
+
+From the BIC output of the four models, I can see that model 1 has the lowest BIC (4969). However, model 1 was just used to estimate the trend of variables in a high level. Comparing the BIC values among models 2, 3, and 4, I find that model 3 has the lowest value. BIC uses the penalty term of the number of parameters to prevent overfitting. This makes model 3 the best model.
+
+
+# Step 4. Diagnostics
+
+## Residual Plot
+
+I check the residual plot and find out that all the residuals are scattered closely around zero. This shows that there are no systematic over or under estimations.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+mod3 = lmer(Suicide ~  BMI + disorder + Adolescent + Rural + BirthRate  + Inflation  +(BMI + disorder + BirthRate|country), data = Suicide, REML = FALSE)
+
+Suicide_res <- Suicide %>% 
+mutate(PredictY= predict(mod),
+Residuals = Suicide - PredictY)
+ggplot(data=Suicide_res) +
+geom_point(aes(x=PredictY, y=Residuals),alpha=0.3) + 
+  labs(x= "Predicted Number of Suicides", title = "Residuals of the Number of Suicides")
+```
+
+## Q-Q Plot
+
+In order to see if the random effects distribution is Normal, I also check the Q-Q plot. Even though it is not perfectly normally distributed, I still find a large proportion of my observations are normally distributed except for some boundary values. Thus, I state that my model does not have systematic over or under predictions. 
+
+```{r warning=FALSE, message=FALSE, error=FALSE}
+A = ranef(mod3)$country$`(Intercept)`
+qqnorm(A)
+qqline(A)
+```
+
+
+## Extreme Random Intercept Estimates
+
+Checking the distribution of the predicted random effects and arranging by decreasing intercept, I find the countries with the highest and lowest number of suicides compared to the majority of the countries in the middle of the normal distribution bell curve. Thailand, Japan, Estonia, Sri Lanka, and Ukraine all have significantly higher intercepts, or number of average suicides, compared to the rest of the world. South Africa, Kazakhstan, Philippines, Bulgaria, and Denmark have significantly lower number of average suicides compared to the rest of the countries. These countries lie on the tail of the normal bell curve of the distribution of predicted random effects. 
+
+```{r warning=FALSE, message=FALSE, error=FALSE}
+RE = ranef(mod3)$country
+
+RE %>%
+  mutate(countryname = row.names(RE)) %>%
+  arrange(desc(`(Intercept)`)) # countries with the most to least suicide rates
+```
+
+\newpage
+
+# Step 5. Conclusion and Limitations
+
+## Conclusion
+
+In order to select the best mixed effect, random slope model to explain my longitudinal data, I first fit various linear mixed effect models, then assessed the best-fitting model with information criteria and various hypothesis tests.
+
+My final model, mod3 is shown below: 
+
+$$Suicide_{ij} = \beta_0 + \beta_1{BMI_{ij}} + \beta_2{Disorder_{ij}}+ \beta_3{Adolescent_{ij}} + \beta_4{Rural_{ij}} + \beta_5{Birthrate_{ij}} $$
+$$+ \beta_6{Inflation_{ij}} + b_{ij}(BMI_{ij}+ Disorder_{ij} + Birthrate_{ij}) + \epsilon_{ij}$$
+
+I welcome any opportunity to discuss my project or statistical programming skills.
+
+
+## Limitations
+
+There are a few limitations in my analysis. First, my estimates of coefficients would become biased if my model is missing important explanatory variables. Furthermore, the decision of not including any interaction and non-linear terms is made based on the scatter plots between variables in a global level. If some patterns only occur in the country level, I would miss information about interacting variables on the global level. In the future, I plan to generate visualizations in the country level and assess the need to add interactions and non-linear terms in my model. 
+
+Besides the issues pertaining to model and variable selection, I also face the challenge of lacking observations. I only obtain asymptotically unbiased parameter estimations due to my limited number of observations. The estimates of the variance of random effects are also biased with finite observations. The distribution with finite observations is only asymptotically normal instead of normal. In the future, if more data is available, I will increase my sample size as large as possible so that as $n\rightarrow \infty$, my estimates and the variance of estimates would be more unbiased, and the sampling distribution would become more normal. 
+
+# References
+
+
