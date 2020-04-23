@@ -396,7 +396,7 @@ I check the residual plot and find out that all the residuals are scattered clos
 mod3 = lmer(Suicide ~  BMI + disorder + Adolescent + Rural + BirthRate  + Inflation  +(BMI + disorder + BirthRate|country), data = Suicide, REML = FALSE)
 
 Suicide_res <- Suicide %>% 
-mutate(PredictY= predict(mod),
+mutate(PredictY= predict(mod3),
 Residuals = Suicide - PredictY)
 ggplot(data=Suicide_res) +
 geom_point(aes(x=PredictY, y=Residuals),alpha=0.3) + 
